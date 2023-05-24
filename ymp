@@ -1,0 +1,9 @@
+python opt_wmt_eval.py > ./opt-1.3b_de-en.txt
+
+python opt_wmt_eval.py > ./opt-13b_de-en.txt
+
+python opt_wmt_eval.py > ./opt-iml-1.3b_de-en.txt
+
+python opt_wmt_eval.py > ./opt-iml-max-1.3b_de-en.txt
+
+python opt_wmt_eval.py > ./opt-iml-30b_de-en.txt

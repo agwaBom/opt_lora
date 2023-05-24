@@ -1,0 +1,13 @@
+*.npy
+*.index
+*.index.trained
+*.pyc
+GYAFC_Corpus
+XFORMAL
+accelerate
+*.bin
+*.pickle
+runs
+*.txt
+*.pt
+*.csv
