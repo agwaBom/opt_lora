@@ -11,12 +11,7 @@ from tqdm import tqdm
 from datasets import load_dataset
 import evaluate
 import os
-<<<<<<< HEAD:lora_opt_train_gsm8k.py
 os.environ['CUDA_VISIBLE_DEVICES'] = "2"
-=======
-import math
-os.environ['CUDA_VISIBLE_DEVICES'] = "2,3"
->>>>>>> 7bf95423153fb341b449a42ffdf154dfd85b0001:lora_opt_main.py
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 set_random_seed(123)
 import loralib as lora
@@ -87,18 +82,11 @@ if __name__ == "__main__":
     parser.add_argument("--train_data_path", default="./dataset/news_commentary_16_en_de_train.json")
     parser.add_argument("--valid_data_path", default="./dataset/dev.json")
 
-<<<<<<< HEAD:lora_opt_train_gsm8k.py
     #parser.add_argument("--test_data_path_em", default="./GYAFC_Corpus/GYAFC_Corpus/Entertainment_Music/test/test.json")
     #parser.add_argument("--test_data_path_fr", default="./GYAFC_Corpus/GYAFC_Corpus/Family_Relationships/test/test.json")
     #parser.add_argument("--output_dir", default="./lora_gyafc_output/")
     parser.add_argument("--checkpoint_path", default="./lora_models/opt_iml_max_1_3b/r8/gsm8k/opt-iml-1_3b_gsm8k_lora")
     parser.add_argument("--num_epochs", default=10, type=int)
-=======
-    parser.add_argument("--test_data_path_em", default="./GYAFC_Corpus/GYAFC_Corpus/Entertainment_Music/test/test.json")
-    parser.add_argument("--test_data_path_fr", default="./GYAFC_Corpus/GYAFC_Corpus/Family_Relationships/test/test.json")
-    parser.add_argument("--output_dir", default="./lora_gyafc_output/")
-    parser.add_argument("--checkpoint_path", default="./LoRA/opt-iml-30b_lora_1.pt")
->>>>>>> 7bf95423153fb341b449a42ffdf154dfd85b0001:lora_opt_main.py
     opt =  parser.parse_args()
 
     print(opt)
@@ -155,10 +143,6 @@ if __name__ == "__main__":
     tokenized_label = dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=[rc_a, rc_b])
     valid_tokenized_label = valid_dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=[rc_a, rc_b])
 
-<<<<<<< HEAD:lora_opt_train_gsm8k.py
-=======
-    max_seq_len = max([len(i) for i in tokenized_input['test_em']['input_ids']]) + 30 # 30 is for giving some space for the model to generate
->>>>>>> 7bf95423153fb341b449a42ffdf154dfd85b0001:lora_opt_main.py
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     train_dataloader = DataLoader(tokenized_input, batch_size=batch_size, num_workers=10, collate_fn=data_collator)
