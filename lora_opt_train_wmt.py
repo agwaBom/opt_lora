@@ -17,22 +17,26 @@ set_random_seed(123)
 import loralib as lora
 
 def tokenize_input(examples):
-    type = "gyafc"
-    if type == "wmt16":
-        inputs = ["Translate this from English to German: \n" + example['en'] + "\nGerman: " for example in examples["translation"]]
+    type = "wmt"
+    if type == "wmt":
+        inputs = ["Translate this from English to German: \n" + en + "\nGerman: " for en, du in zip(examples['en'], examples['du'])]
     elif type == "gyafc":
         inputs = ["Convert the following informal sentence into a formal sentence: \nInformal: " + informal + "\nFormal: " for informal in examples['informal']]
+    elif type == "gsm8k":
+        inputs = ["Problem: " + question + "\nSolution: " for question in examples['question']]
 
     # model_inputs outputs dict {"input_ids", "attention_mask"}
     model_inputs = tokenizer(inputs, max_length=500, add_special_tokens=True)
     return model_inputs
 
 def tokenize_label(examples):
-    type = "gyafc"
-    if type == "wmt16":
-        labels = ["Translate this from English to German: \n" + example['en'] + "\nGerman: " + example['de'] for example in examples["translation"]]
+    type = "wmt"
+    if type == "wmt":
+        labels = ["Translate this from English to German: \n" + en + "\nGerman: " + du for en, du in zip(examples['en'], examples['du'])]
     elif type == "gyafc":
         labels = ["Convert the following informal sentence into a formal sentence: \nInformal: " + informal + "\nFormal: " + formal for informal, formal in zip(examples['informal'], examples['formal'])]
+    elif type == "gsm8k":
+        labels = ["Problem: " + question + "\nSolution: " + answer for question, answer in zip(examples['question'], examples['answer'])]
 
     # model_inputs outputs dict {"input_ids", "attention_mask"}
     model_labels = tokenizer(labels, max_length=500, add_special_tokens=True)
@@ -59,24 +63,26 @@ def save_pretrained_weight(path, model):
 if __name__ == "__main__":
     # Basic Argument Setting
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", default=10) # 약 4G 모델
-    parser.add_argument("--model", default="facebook/opt-iml-max-30b")
-    parser.add_argument("--log_dir", default="./runs/opt-iml-max-30b")
+    parser.add_argument("--batch_size", default=30, type=int) # 약 4G 모델
+    parser.add_argument("--model", default="facebook/opt-iml-max-1.3b")
+    parser.add_argument("--log_dir", default="./runs/opt-iml-max-1.3b")
     #parser.add_argument("-model", default="facebook/opt-125m")
     #parser.add_argument("-log_dir", default="./runs/opt-125m")
-    parser.add_argument("--train_data_path", default="./GYAFC_Corpus/GYAFC_Corpus/concated_train.json")
+    parser.add_argument("--train_data_path", default="./dataset/news_commentary_16_en_de_train.json")
+    parser.add_argument("--valid_data_path", default="./dataset/dev.json")
 
-    parser.add_argument("--test_data_path_em", default="./GYAFC_Corpus/GYAFC_Corpus/Entertainment_Music/test/test.json")
-    parser.add_argument("--test_data_path_fr", default="./GYAFC_Corpus/GYAFC_Corpus/Family_Relationships/test/test.json")
-    parser.add_argument("--output_dir", default="./lora_gyafc_output/")
-    parser.add_argument("--checkpoint_path", default="./LoRA/opt-iml-30b_lora.pt")
+    #parser.add_argument("--test_data_path_em", default="./GYAFC_Corpus/GYAFC_Corpus/Entertainment_Music/test/test.json")
+    #parser.add_argument("--test_data_path_fr", default="./GYAFC_Corpus/GYAFC_Corpus/Family_Relationships/test/test.json")
+    #parser.add_argument("--output_dir", default="./lora_gyafc_output/")
+    parser.add_argument("--checkpoint_path", default="./lora_models/opt_iml_max_1_3b/r8/wmt22/opt-iml-1_3b_wmt22_lora")
+    parser.add_argument("--num_epochs", default=10, type=int)
     opt =  parser.parse_args()
 
     print(opt)
 
     writer = SummaryWriter(opt.log_dir)
     batch_size = opt.batch_size
-    model_path = "./model_weight/"+opt.model
+    model_path = "/home/khyunjin1993/dev/myRepo/knnopt/model_weight/"+opt.model
     writer.add_text('model', opt.model)
     writer.add_text('batch_size', str(batch_size))
     accelerator = Accelerator()
@@ -112,45 +118,83 @@ if __name__ == "__main__":
     model.generation_config = generation_config
 
     # Load Dataset of informal input and formal.ref0 label
-    dataset = load_dataset("json", data_files={"train": opt.train_data_path, "test_em": opt.test_data_path_em, "test_fr": opt.test_data_path_fr})
-    print(f"train dataset length: {len(dataset['train'])}")
+    if opt.train_data_path == "gsm8k":
+        dataset = load_dataset("gsm8k", "main")
+        dataset = dataset["test"]
+        rc_a = "question"
+        rc_b = "answer"
+    else:
+        dataset = load_dataset("json", data_files=opt.train_data_path)
+        dataset = dataset["train"]
+
+        valid_dataset = load_dataset("json", data_files=opt.valid_data_path)
+        valid_dataset = valid_dataset["train"]
+        rc_a = "du"
+        rc_b = "en"
+
+    print(f"total dataset length: {len(dataset)}\n")
+    print("rc_a and rc_b", rc_a, rc_b)
 
     # add data
-    tokenized_input = dataset.map(tokenize_input, batched=True, num_proc=10, remove_columns=["informal", "formal"])
-    tokenized_label = dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=["informal", "formal"])
+    tokenized_input = dataset.map(tokenize_input, batched=True, num_proc=10, remove_columns=[rc_a, rc_b])
+    tokenized_label = dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=[rc_a, rc_b])
 
-    max_seq_len = max([len(i) for i in tokenized_input['train']['input_ids']]) + 30 # 30 is for giving some space for the model to generate
+    valid_tokenized_label = valid_dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=[rc_a, rc_b])
+
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    train_dataloader = DataLoader(tokenized_input['train'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
-    train_label_dataloader = DataLoader(tokenized_label['train'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
 
-    test_em_dataloader = DataLoader(tokenized_input['test_em'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
-    test_fr_dataloader = DataLoader(tokenized_input['test_fr'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
+    train_dataloader = DataLoader(tokenized_input, batch_size=batch_size, num_workers=10, collate_fn=data_collator)
+    train_label_dataloader = DataLoader(tokenized_label, batch_size=batch_size, num_workers=10, collate_fn=data_collator)
+    valid_label_dataloader = DataLoader(valid_tokenized_label, batch_size=batch_size, num_workers=10, collate_fn=data_collator)
 
     # initialize hyperparameters
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    #import IPython; IPython.embed(); exit(1)
+    '''
+    cnt = 0
+    for p in model.parameters():
+        if p.requires_grad:
+            cnt += 1
+            print(cnt, p.name, p.data.shape)
+    '''
+    #pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print("1 Batch Training...")
-    model.train()
-    for i, (batch, batch_label) in enumerate(tqdm(zip(train_dataloader, train_label_dataloader))):
-        print(f"========================BATCH: {i}=========================\n")
-        batch = {k: torch.Tensor(v).to(device) for k, v in batch.items()}
-        batch_label = {k: torch.Tensor(v).to(device) for k, v in batch_label.items()}
-        optimizer.zero_grad()
-        pad_to_add = batch_label['input_ids'].shape[1] - batch['input_ids'].shape[1]
-        # add padding to the input
-        if pad_to_add > 0:
-            batch['input_ids'] = F.pad(batch['input_ids'], (0, pad_to_add), value=tokenizer.pad_token_id)
-            batch['attention_mask'] = F.pad(batch['attention_mask'], (0, pad_to_add), value=0)
-        lora.mark_only_lora_as_trainable(model)
-        outputs = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], labels=batch_label['input_ids'])
-        loss = outputs.loss
-        print(loss.item())
-        loss.backward()
-        optimizer.step()
+    model = torch.nn.DataParallel(model)
+    for epoch in range(opt.num_epochs):
+        total_train_loss = 0
+        for i, (batch, batch_label) in enumerate(tqdm(zip(train_dataloader, train_label_dataloader))):
+            model.train()
+            batch = {k: torch.Tensor(v).to(device) for k, v in batch.items()}
+            batch_label = {k: torch.Tensor(v).to(device) for k, v in batch_label.items()}
+            lora.mark_only_lora_as_trainable(model)
+            optimizer.zero_grad()
+            current_step = epoch * len(train_label_dataloader) + i
+            # pad_to_add = batch_label['input_ids'].shape[1] - batch['input_ids'].shape[1]
+            # add padding to the input
+            # if pad_to_add > 0:
+            #     batch['input_ids'] = F.pad(batch['input_ids'], (0, pad_to_add), value=tokenizer.pad_token_id)
+            #     batch['attention_mask'] = F.pad(batch['attention_mask'], (0, pad_to_add), value=0)
             
-    torch.save(lora.lora_state_dict(model), opt.checkpoint_path)
-        
+            outputs = model(**batch_label)
+            loss = outputs.loss.mean()
+            print(f"Current/Total epoch step: {current_step}/{len(train_label_dataloader)}\tTrain step loss: {loss.item()}")
+            total_train_loss += loss.item()
+            loss.backward()
+            optimizer.step()
+
+            if current_step % 100 == 0:
+                total_valid_loss = 0
+                model.eval()
+                for i, batch_label in enumerate(tqdm(valid_label_dataloader)):
+                    with torch.no_grad():
+                        outputs = model(**batch_label)
+                        loss = outputs.loss.mean()
+                        total_valid_loss += loss.item()
+                print("Total Valid Loss: ", total_valid_loss/len(valid_label_dataloader))
+                torch.save(lora.lora_state_dict(model.module), opt.checkpoint_path+f"_{current_step}_{round(total_valid_loss/len(valid_label_dataloader), 2)}.pt")
+        print("Total Train Loss: ", total_train_loss/len(train_label_dataloader))
+
+    '''    
     model.eval()
     em_pred_list = list()
     em_input_list = list()
@@ -236,3 +280,4 @@ if __name__ == "__main__":
     with open(opt.output_dir+'/lm_pred_fr.txt', mode='w') as out:
         for i in refined_pred_list:
             out.write(i.replace("\n", "")+'\n')
+    '''

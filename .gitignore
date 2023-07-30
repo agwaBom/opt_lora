@@ -11,3 +11,4 @@ runs
 *.txt
 *.pt
 *.csv
+*.json

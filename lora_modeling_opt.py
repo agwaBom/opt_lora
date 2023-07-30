@@ -149,7 +149,7 @@ class OPTAttention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.is_last_layer = is_last_layer
         if is_last_layer:
-            self.out_proj = lora.Linear(embed_dim, embed_dim, bias=bias, r=512)
+            self.out_proj = lora.Linear(embed_dim, embed_dim, bias=bias, r=512).to('cuda')
         else:
             self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
