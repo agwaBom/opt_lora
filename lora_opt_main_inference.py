@@ -80,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_data_path_em", default="./GYAFC_Corpus/GYAFC_Corpus/Entertainment_Music/test/test.json")
     parser.add_argument("--test_data_path_fr", default="./GYAFC_Corpus/GYAFC_Corpus/Family_Relationships/test/test.json")
     parser.add_argument("--output_dir", default="./lora_gyafc_output/")
-    parser.add_argument("--checkpoint_path", default="./LoRA/opt-iml-30b_lora.pt")
+    parser.add_argument("--checkpoint_path", default="./LoRA/opt-iml-30b_lora_1.pt")
     opt =  parser.parse_args()
 
     print(opt)
@@ -133,11 +133,41 @@ if __name__ == "__main__":
     tokenized_label = dataset.map(tokenize_label, batched=True, num_proc=10, remove_columns=["informal", "formal"])
 
     max_seq_len = max([len(i) for i in tokenized_input['test_em']['input_ids']]) + 30 # 30 is for giving some space for the model to generate
+<<<<<<<< HEAD:lora_opt_main_inference.py
     print("max sequence length: ", max_seq_len)
+========
+>>>>>>>> 7bf95423153fb341b449a42ffdf154dfd85b0001:lora_opt_main.py
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     test_em_dataloader = DataLoader(tokenized_input['test_em'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
     test_fr_dataloader = DataLoader(tokenized_input['test_fr'], batch_size=batch_size, num_workers=10, collate_fn=data_collator)
 
+<<<<<<<< HEAD:lora_opt_main_inference.py
+========
+    # initialize hyperparameters
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    print("1 Batch Training...")
+    model.train()
+    for i, (batch, batch_label) in enumerate(tqdm(zip(train_dataloader, train_label_dataloader))):
+        print(f"========================BATCH: {i}=========================\n")
+        batch = {k: torch.Tensor(v).to(device) for k, v in batch.items()}
+        batch_label = {k: torch.Tensor(v).to(device) for k, v in batch_label.items()}
+        optimizer.zero_grad()
+        pad_to_add = batch_label['input_ids'].shape[1] - batch['input_ids'].shape[1]
+        # add padding to the input
+        if pad_to_add > 0:
+            batch['input_ids'] = F.pad(batch['input_ids'], (0, pad_to_add), value=tokenizer.pad_token_id)
+            batch['attention_mask'] = F.pad(batch['attention_mask'], (0, pad_to_add), value=0)
+        lora.mark_only_lora_as_trainable(model)
+        outputs = model(input_ids=batch_label['input_ids'], attention_mask=batch['attention_mask'], labels=batch_label['input_ids'])
+        loss = outputs.loss
+        print(loss.item())
+        loss.backward()
+        optimizer.step()
+            
+    torch.save(lora.lora_state_dict(model), opt.checkpoint_path)
+        
+>>>>>>>> 7bf95423153fb341b449a42ffdf154dfd85b0001:lora_opt_main.py
     model.eval()
     em_pred_list = list()
     em_input_list = list()
